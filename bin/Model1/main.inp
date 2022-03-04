@@ -1,0 +1,13 @@
+
+!=======================================================
+! Modeled by Bill with Python Automation 2022-03
+!=======================================================
+finish
+/CLEAR,START
+/FILNAME,main,0
+/TITLE,TestModelA
+/input,Material,inp
+/input,Section,inp
+/input,Model,inp
+/input,Debug,inp
+!-------------------------------------------------------
