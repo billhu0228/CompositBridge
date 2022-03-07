@@ -1,6 +1,7 @@
 import os
 from typing import Tuple, List, Dict
 
+import numpy as np
 from PyAngle import Angle
 from ezdxf.math import Vec3
 
@@ -80,7 +81,7 @@ class Span:
 
 
 class CompositeBridge:
-    __slots__ = ('_node_list', '_elem_list', '_sect_list', '_mat_list', '_spans', 'cross_section', '_is_fem', '_apdl')
+    __slots__ = ('_node_list', '_elem_list', '_sect_list', '_mat_list', '_spans', 'cross_section', '_is_fem', '_apdl', 'cross_beam_dist', '_xlist', '_ylist')
     _node_list: Dict[int, 'Node']
     _elem_list: Dict[int, 'Element']
     _sect_list: Dict[int, 'Section']
@@ -90,10 +91,11 @@ class CompositeBridge:
     _is_fem: bool
     _apdl: str
 
-    def __init__(self, spans: List['Span'], cross: 'CrossArrangement'):
+    def __init__(self, spans: List['Span'], cross_arr: 'CrossArrangement', cross_beam_dist: float = 5.0, **kwargs):
         self._spans = spans
-        self.cross_section = cross
+        self.cross_section = cross_arr
         self._initialize()
+        self.cross_beam_dist = cross_beam_dist
         pass
 
     def add_material(self, mat: 'Material'):
@@ -117,6 +119,8 @@ class CompositeBridge:
         self._mat_list = {}
         self._is_fem = False
         self._apdl = ""
+        self._xlist = []
+        self._ylist = []
         pass
 
     def generate_fem(self):
@@ -124,6 +128,7 @@ class CompositeBridge:
         生成有限元数据
         :return:
         """
+        self._create_coord()
         self._is_fem = True
         pass
 
@@ -136,7 +141,7 @@ class CompositeBridge:
             pass
         else:
 
-            print("到处前请先生成fem模型.")
+            print("导出前，请生成fem模型.")
             return
 
     @staticmethod
@@ -164,6 +169,21 @@ finish
             cmd += val.apdl_str
         with open(filestream, 'w+') as fid:
             fid.write(cmd)
+
+    def _create_coord(self):
+        """
+        生成控制坐标
+        """
+        tmp = []
+        for i in range(len(self._spans) - 1):
+            tmp += self.more_value(self._spans[i].station, self._spans[i + 1].station, apx_dist=self.cross_beam_dist)
+        self._xlist = np.unique(tmp).tolist()
+        pass
+
+    @staticmethod
+    def more_value(start: float, end: float, apx_dist: float):
+        npts = int(np.round((end - start) / apx_dist, 0))
+        return np.linspace(start, end, npts + 1).tolist()
 
 
 if __name__ == "__main__":

@@ -17,6 +17,8 @@ m2 = Material(2, 206000, 7.85e-9, 1.2e5, 0.3, 'Q345')
 m3 = Material(3, 34500, 2.5e-9, 1.1e5, 0.2, 'Q345')
 
 Bridge = CompositeBridge(sps, ca)
+kk=Bridge.more_value(0,30,4.8)
+
 Bridge.add_material(m1)
 Bridge.add_material(m2)
 Bridge.add_material(m3)
