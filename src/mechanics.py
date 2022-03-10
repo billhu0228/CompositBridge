@@ -50,6 +50,7 @@ def calculate(span: List[int], cForce: List[float] = None,
         xi = step * i
         if node_num in bearingNode:
             j = bearingNode.index(node_num)
+
             xi = float(sum(span[0:j]))
         node(node_num, xi, 0)
     for i in bearingNode:

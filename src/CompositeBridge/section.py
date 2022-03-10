@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from typing import Tuple
 
 
 class ApdlWriteable:
@@ -13,10 +14,10 @@ class Section:
     __slots__ = ('id', 'name', '_offset')
     __metaclass__ = ABCMeta
 
-    def __init__(self, Id: int, Name: str, **kwargs):
+    def __init__(self, Id: int, Name: str, offset: Tuple[float, float]):
         self.id = Id
         self.name = Name
-        self._offset = (0, 0)
+        self._offset = offset
 
     def __cmp__(self, other: "Section"):
         """compare two Section
@@ -30,6 +31,37 @@ class Section:
         self._offset = (x, y)
 
 
+class ShellSection(Section, ApdlWriteable):
+    """
+    Shell截面
+    """
+
+    __slots__ = ('thickness',)
+
+    thickness: float
+
+    def __init__(self, Id: int, Name: str, offset: Tuple[float, float], th: float):
+        super().__init__(Id, Name, offset)
+        self.thickness = th
+
+    @property
+    def apdl_str(self):
+        cmd_str = ''' 
+! Shell截面
+sect,%i,shell,,%s
+secdata, %.5f,1,0.0,3  
+secoffset,user,%.5f  
+seccontrol,,,, , , ,''' % (self.id, self.name, self.thickness, self._offset[1])
+        return cmd_str
+
+    def __str__(self):
+        st = "%i : %s : (" % (self.id, self.name)
+        for key in self.__slots__:
+            st += "%.3f," % getattr(self, key)
+        st += ")"
+        return st
+
+
 class ISection(Section, ApdlWriteable):
     """
     I型梁截面
@@ -37,8 +69,8 @@ class ISection(Section, ApdlWriteable):
 
     __slots__ = ('w1', 'w2', 'w3', 't1', 't2', 't3')
 
-    def __init__(self, Id: int, Name: str, **kwargs):
-        super().__init__(Id, Name)
+    def __init__(self, Id: int, Name: str, offset: Tuple[float, float], **kwargs):
+        super().__init__(Id, Name, offset)
         for key, value in kwargs.items():
             if key in self.__slots__:
                 setattr(self, key, value)
@@ -46,16 +78,17 @@ class ISection(Section, ApdlWriteable):
     def __str__(self):
         st = "%i : %s : (" % (self.id, self.name)
         for key in self.__slots__:
-            st += "%.1f," % getattr(self, key)
+            st += "%.3f," % getattr(self, key)
         st += ")"
         return st
 
     @property
     def apdl_str(self):
         cmd_str = '''
-SECTYPE,  %i, BEAM, I, %s, 0   
-SECOFFSET, USER, %f, %f 
-SECDATA,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,0,0,0,0,0,0''' % (
+! I型梁截面
+sect,  %i, BEAM, I, %s, 0   
+secoffset, user, %f, %f 
+secdata,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,0,0,0,0,0,0''' % (
             self.id, self.name, self._offset[0], self._offset[1],
             self.w1, self.w2, self.w3, self.t1, self.t2, self.t3)
         return cmd_str
