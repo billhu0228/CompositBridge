@@ -29,6 +29,9 @@ class Node(ApdlWriteable):
     def distance(self, other: 'Node'):
         return self._location.distance(other._location)
 
+    def copy(self, dn: int = 0, x0: float = 0, y0: float = 0, z0: float = 0):
+        return Node(self.n + dn, self.x + x0, self.y + y0, self.z + z0)
+
 
 class Element:
     __slots__ = ('e', 'nlist', 'mat', 'etype', 'real', 'secn', '_npts')
@@ -50,6 +53,11 @@ class Element:
         elif etype == 181:
             if len(nodes) != 4:
                 raise Exception("SHELL181应使用4个Node.")
+            else:
+                self.nlist = nodes
+        elif etype == 184:
+            if len(nodes) != 2:
+                raise Exception("MPC184应使用2个Node.")
             else:
                 self.nlist = nodes
         else:
@@ -104,7 +112,7 @@ class Span:
 
 class CompositeBridge:
     __slots__ = ('_node_list', '_elem_list', '_sect_list', '_mat_list', '_spans', 'cross_section', '_is_fem', '_apdl',
-                 'cross_beam_dist', '_xlist', '_ylist', '_main_xlist', '_main_ylist')
+                 'cross_beam_dist', '_xlist', '_ylist', '_main_xlist', '_main_ylist', '_sub_ylist')
     _node_list: Dict[int, 'Node']
     _elem_list: Dict[int, 'Element']
     _sect_list: Dict[int, 'Section']
@@ -115,6 +123,7 @@ class CompositeBridge:
     _apdl: str
     _main_xlist: List[float]  # 主x坐标位置
     _main_ylist: List[float]  # 主y坐标位置
+    _sub_ylist: List[float]  # 次y坐标位置
     _xlist: List[float]  # 全x坐标位置
     _ylist: List[float]  # 全y坐标位置
 
@@ -160,6 +169,7 @@ class CompositeBridge:
         self._ylist = []
         self._main_xlist = []
         self._main_ylist = []
+        self._sub_ylist = []
         pass
 
     def generate_fem(self, e_size_x: float, e_size_y):
@@ -230,7 +240,7 @@ finish
         cmd += '''! 单元        
 et,181,SHELL181
 et,188,BEAM188
-et,184,MPC184'''
+et,184,MPC184,1'''
         with open(filestream, 'w+', encoding='utf-8') as fid:
             fid.write(cmd)
 
@@ -291,15 +301,19 @@ et,184,MPC184'''
         tmp = [0]
         for dist in self.cross_section.girder_arr:
             tmp.append(tmp[-1] + dist)
+        self._main_ylist = np.unique(tmp).tolist()
         tmp2 = [0]
         for dist in self.cross_section.subgirder_arr:
             tmp2.append(tmp2[-1] + dist)
-        tmp += tmp2
-        tmp.sort()
-        self._main_ylist = np.unique(tmp).tolist()
+        self._sub_ylist = np.unique(tmp2).tolist()
+
+        kp_y = self._sub_ylist + self._main_ylist
+        kp_y = np.unique(kp_y)
+        kp_y.sort()
+
         tmp = []
-        for i in range(len(self._main_ylist) - 1):
-            tmp += self.more_value(self._main_ylist[i], self._main_ylist[i + 1], apx_dist=e_size_y)
+        for i in range(len(kp_y) - 1):
+            tmp += self.more_value(kp_y[i], kp_y[i + 1], apx_dist=e_size_y)
         self._ylist = np.unique(tmp).tolist()
 
     def _create_plate(self):
@@ -327,6 +341,43 @@ et,184,MPC184'''
         pass
 
     def _create_girder(self):
+        prefix = max(self._node_list.keys())
+        self._node_list[999999] = Node(999999, 0, 0, 1e5)
+        npts = len(self._xlist)
+        val = list(self._node_list.values())
+        girder_y = self._main_ylist[1:-1]
+        ni = prefix + 1
+        ei = list(self._elem_list.keys())[-1] + 1
+        beam_h = self._sect_list[2].w3
+        slab_h = self._sect_list[1].thickness
+        slab_o = self._sect_list[1].offset[1]
+        slab_gap = slab_o - slab_h * 0.5
+        for ii, y0 in enumerate(girder_y):
+            nn = filter(lambda x: x.y == y0, val)
+            for jj, n in enumerate(nn):
+                self._node_list[ni] = n.copy(ni - n.n, 0, 0, -slab_gap - 0.5 * beam_h)
+                ni += 1
+                ns = (n, self._node_list[ni - 1])
+                self._elem_list[ei] = Element(ei, 184, 184, 1, 1, ns)
+                ei += 1
+                if jj != 0:
+                    ns = (self._node_list[ni - 2], self._node_list[ni - 1], self._node_list[999999])
+                    self._elem_list[ei] = Element(ei, 2, 188, 1, 2, ns)
+                    ei += 1
+        girder_y=self._sub_ylist[1:-1]
+        beam_h = self._sect_list[3].w3
+        for ii, y0 in enumerate(girder_y):
+            nn = filter(lambda x: x.y == y0, val)
+            for jj, n in enumerate(nn):
+                self._node_list[ni] = n.copy(ni - n.n, 0, 0, -slab_gap - 0.5 * beam_h)
+                ni += 1
+                ns = (n, self._node_list[ni - 1])
+                self._elem_list[ei] = Element(ei, 184, 184, 1, 1, ns)
+                ei += 1
+                if jj != 0:
+                    ns = (self._node_list[ni - 2], self._node_list[ni - 1], self._node_list[999999])
+                    self._elem_list[ei] = Element(ei, 2, 188, 1, 3, ns)
+                    ei += 1
         pass
 
     def _create_boundary(self):

@@ -30,6 +30,10 @@ class Section:
     def set_offset(self, x=0, y=0):
         self._offset = (x, y)
 
+    @property
+    def offset(self):
+        return self._offset
+
 
 class ShellSection(Section, ApdlWriteable):
     """
