@@ -32,6 +32,24 @@ class Node(ApdlWriteable):
     def copy(self, dn: int = 0, x0: float = 0, y0: float = 0, z0: float = 0):
         return Node(self.n + dn, self.x + x0, self.y + y0, self.z + z0)
 
+    def __eq__(self, other: 'Node'):
+        return self.n == other.n
+
+    def __ne__(self, other: 'Node'):
+        return self.n != other.n
+
+    def __gt__(self, other: 'Node'):
+        return self.n > other.n
+
+    def __lt__(self, other: 'Node'):
+        return self.n < other.n
+
+    def __ge__(self, other: 'Node'):
+        return self.n >= other.n
+
+    def __le__(self, other: 'Node'):
+        return self.n <= other.n
+
 
 class Element:
     __slots__ = ('e', 'nlist', 'mat', 'etype', 'real', 'secn', '_npts')
@@ -87,14 +105,16 @@ class CrossArrangement:
     """
     正交横截面
     """
-    __slots__ = ("width", 'girder_arr', 'subgirder_arr', 'slab_thickness', 'slab_gap')
+    __slots__ = ("width", 'girder_arr', 'subgirder_arr', 'slab_thickness', 'slab_gap', 'cross_dist_a', 'cross_dist_b')
     width: float
     girder_arr: List[float]
     subgirder_arr: List[float]
     slab_thickness: float
     slab_gap: float
+    cross_dist_a: float  # 横梁上弦至主梁上表面距离
+    cross_dist_b: float  # 横梁下弦至横梁上弦上表面距离，0表示无下弦
 
-    def __init__(self, width, girder_arr, subgirder_arr, slab_thickness, slab_gap):
+    def __init__(self, width, girder_arr, subgirder_arr, slab_thickness, slab_gap, x_0, x_1):
         self.width = width
         self.girder_arr = girder_arr
         self.subgirder_arr = subgirder_arr
@@ -102,6 +122,8 @@ class CrossArrangement:
         self.slab_gap = slab_gap
         if sum(self.girder_arr) != self.width or sum(self.subgirder_arr) != self.width:
             raise Exception("梁间距配置有误.")
+        self.cross_dist_a = x_0
+        self.cross_dist_b = x_1
 
 
 class Span:
@@ -127,7 +149,7 @@ class CompositeBridge:
     _xlist: List[float]  # 全x坐标位置
     _ylist: List[float]  # 全y坐标位置
 
-    def __init__(self, spans: List['Span'], cross_arr: 'CrossArrangement', cross_beam_dist: float = 5.0, **kwargs):
+    def __init__(self, spans: List['Span'], cross_arr: 'CrossArrangement', cross_beam_dist: float = 5.0):
         self._spans = spans
         self.cross_section = cross_arr
         self._initialize()
@@ -181,7 +203,6 @@ class CompositeBridge:
         self._create_plate()
         self._create_girder()
         self._create_cross_beam()
-        self._create_boundary()
         self._is_fem = True
         pass
 
@@ -194,10 +215,9 @@ class CompositeBridge:
             self._apdl_list_out(os.path.join(path, 'Section.inp'), self._sect_list)
             self._apdl_node(os.path.join(path, 'Node.inp'))
             self._apdl_elem(os.path.join(path, 'Element.inp'))
-
+            self._apdl_boundary(os.path.join(path, 'Boundary.inp'))
             pass
         else:
-
             print("导出前，请生成fem模型.")
             return
 
@@ -210,6 +230,7 @@ class CompositeBridge:
     def _apdl_begin(filestream, proj_name="Project A"):
         cmd = '''!=======================================================
 ! Modeled by Bill with Python Automation 2022-03
+! Units: N,m,kg,s
 !=======================================================
 finish
 /CLEAR,START
@@ -220,8 +241,16 @@ finish
 /input,Section,inp
 /input,Node,inp
 /input,Element,inp
+/input,Boundary,inp
 !/input,Debug,inp
-!-------------------------------------------------------''' % proj_name
+!-------------------------------------------------------
+/solu
+OUTPR,ALL,LAST, 
+allsel
+antype,0
+acel,0,9.806,0
+solve
+finish''' % proj_name
         with open(filestream, 'w+') as fid:
             fid.write(cmd)
 
@@ -256,19 +285,6 @@ et,188,BEAM188
 et,184,MPC184'''
         with open(filestream, 'w+', encoding='utf-8') as fid:
             fid.write(cmd)
-
-        def _apdl_section(self, filestream):
-            cmd = "/prep7"
-            for k in self._mat_list.keys():
-                val = self._mat_list[k]
-                cmd += val.apdl_str
-            cmd += '''
-    ! 单元        
-    et,181,SHELL181
-    et,188,BEAM188
-    et,184,MPC184'''
-            with open(filestream, 'w+', encoding='utf-8') as fid:
-                fid.write(cmd)
 
     def _apdl_node(self, filestream):
         cmd = "/prep7\n"
@@ -340,55 +356,122 @@ et,184,MPC184'''
                 e += 1
         pass
 
-    def _create_girder(self):
+    def get_layer_num(self):
         prefix = max(self._node_list.keys())
+        dig = np.power(10, len(str(prefix)) - 1)
+        lay_num = divmod(prefix, dig)[0] * dig
+        return lay_num
+
+    def _create_girder(self):
+        lay_num = self.get_layer_num()
         self._node_list[999999] = Node(999999, 0, 0, 1e5)
-        npts = len(self._xlist)
         val = list(self._node_list.values())
         girder_y = self._main_ylist[1:-1]
-        ni = prefix + 1
         ei = list(self._elem_list.keys())[-1] + 1
         beam_h = self._sect_list[2].w3
         slab_h = self._sect_list[1].thickness
         slab_o = self._sect_list[1].offset[1]
         slab_gap = slab_o - slab_h * 0.5
-        for ii, y0 in enumerate(girder_y):
+        station_list = [sp.station for sp in self._spans]
+        for ii, y0 in enumerate(girder_y):  # 主梁
             nn = filter(lambda x: x.y == y0, val)
             for jj, n in enumerate(nn):
-                self._node_list[ni] = n.copy(ni - n.n, 0, 0, -slab_gap - 0.5 * beam_h)
-                ni += 1
-                ns = (n, self._node_list[ni - 1])
-                self._elem_list[ei] = Element(ei, 184, 184, 1, 1, ns)
+                self._node_list[n.n + lay_num * 1] = n.copy(lay_num * 1, 0, 0, -slab_gap - 0.5 * beam_h)  # 主梁节点
+                self._node_list[n.n + lay_num * 2] = n.copy(lay_num * 2, 0, 0,
+                                                            -slab_gap - self.cross_section.cross_dist_a)  # 主梁上接口
+                if self.cross_section.cross_dist_b != 0:
+                    self._node_list[n.n + lay_num * 3] = n.copy(lay_num * 3, 0, 0,
+                                                                -slab_gap - self.cross_section.cross_dist_a
+                                                                - self.cross_section.cross_dist_b)  # 主梁下接口
+                if n.x in station_list:
+                    self._node_list[n.n + lay_num * 4] = n.copy(lay_num * 4, 0, 0, -slab_gap - beam_h)  # 主梁支座接口
+
+                ns = (n, self._node_list[n.n + lay_num * 1])
+                self._elem_list[ei] = Element(ei, 184, 184, 1, 1, ns)  # MPC
                 ei += 1
+                ns = (self._node_list[n.n + lay_num * 1], self._node_list[n.n + lay_num * 2])
+                self._elem_list[ei] = Element(ei, 184, 184, 1, 1, ns)  # MPC
+                ei += 1
+                if n.x in station_list:
+                    ns = (n, self._node_list[n.n + lay_num * 4])
+                    self._elem_list[ei] = Element(ei, 184, 184, 1, 1, ns)  # MPC
+                    ei += 1
+                if self.cross_section.cross_dist_b != 0:
+                    ns = (self._node_list[n.n + lay_num * 1], self._node_list[n.n + lay_num * 3])
+                    self._elem_list[ei] = Element(ei, 184, 184, 1, 1, ns)  # MPC
+                    ei += 1
                 if jj != 0:
-                    ns = (self._node_list[ni - 2], self._node_list[ni - 1], self._node_list[999999])
+                    ns = (self._node_list[n.n + lay_num * 1], self._node_list[n.n + lay_num * 1 - 1],
+                          self._node_list[999999])
                     self._elem_list[ei] = Element(ei, 2, 188, 1, 2, ns)
                     ei += 1
-        girder_y=self._sub_ylist[1:-1]
+        girder_y = self._sub_ylist[1:-1]
         beam_h = self._sect_list[3].w3
-        for ii, y0 in enumerate(girder_y):
+        for ii, y0 in enumerate(girder_y):  # 纵梁
             nn = filter(lambda x: x.y == y0, val)
             for jj, n in enumerate(nn):
-                self._node_list[ni] = n.copy(ni - n.n, 0, 0, -slab_gap - 0.5 * beam_h)
-                ni += 1
-                ns = (n, self._node_list[ni - 1])
+                self._node_list[n.n + lay_num * 1] = n.copy(lay_num * 1, 0, 0, -slab_gap - 0.5 * beam_h)  # 小纵梁节点
+                self._node_list[n.n + lay_num * 2] = n.copy(lay_num * 2, 0, 0, -slab_gap - beam_h)  # 小纵梁梁底节点
+                ns = (n, self._node_list[n.n + lay_num * 1])
+                self._elem_list[ei] = Element(ei, 184, 184, 1, 1, ns)
+                ei += 1
+                ns = (self._node_list[n.n + lay_num * 1], self._node_list[n.n + lay_num * 2])
                 self._elem_list[ei] = Element(ei, 184, 184, 1, 1, ns)
                 ei += 1
                 if jj != 0:
-                    ns = (self._node_list[ni - 2], self._node_list[ni - 1], self._node_list[999999])
+                    ns = (self._node_list[n.n + lay_num * 1], self._node_list[n.n + lay_num * 1 - 1],
+                          self._node_list[999999])
                     self._elem_list[ei] = Element(ei, 2, 188, 1, 3, ns)
                     ei += 1
-        pass
-
-    def _create_boundary(self):
-        pass
 
     def _create_cross_beam(self):
-        pass
+        ei = list(self._elem_list.keys())[-1] + 1
+        lay_num = self.get_layer_num()
+        val = list(self._node_list.values())
+        z0 = -self.cross_section.slab_gap - self.cross_section.cross_dist_a
+        z1 = z0 - self.cross_section.cross_dist_b
+        for x0 in self._main_xlist:
+            nn = filter(lambda node: node.x == x0 and node.z == z0, val)
+            nnlist = [node for node in nn]
+            nnlist.sort()
+            for jj, n in enumerate(nnlist):
+                if jj != 0:
+                    ns = (nnlist[jj], nnlist[jj - 1], self._node_list[999999])
+                    self._elem_list[ei] = Element(ei, 2, 188, 1, 4, ns)
+                    ei += 1
+            mm = filter(lambda node: node.x == x0 and node.z == z1, val)
+            mmlist = [node for node in mm]
+            mmlist.sort()
+            for jj, n in enumerate(mmlist):
+                if jj != 0:
+                    ns = (mmlist[jj], mmlist[jj - 1], self._node_list[999999])
+                    self._elem_list[ei] = Element(ei, 2, 188, 1, 5, ns)
+                    ei += 1
+            for k in range(len(nnlist)):
+                if k % 2 != 0:
+                    p = divmod((k + 1), 2)[0]
+                    ns = (nnlist[k], mmlist[p - 1], self._node_list[999999])
+                    self._elem_list[ei] = Element(ei, 2, 188, 1, 6, ns)
+                    ei += 1
+                    ns = (nnlist[k], mmlist[p], self._node_list[999999])
+                    self._elem_list[ei] = Element(ei, 2, 188, 1, 6, ns)
+                    ei += 1
 
-
-if __name__ == "__main__":
-    n1 = Node(1, 0, 0, 0)
-    n2 = Node(2, 100, 100, 100)
-    ele = Element(1, 1, 188, 1, 1, n1, n2, n1)
-    print(ele)
+    def _apdl_boundary(self, filestream):
+        cmd = "/prep7\n"
+        x_fix = int(len(self._spans) / 2)-1
+        y_fix = int((len(self._main_ylist)-2) / 2)-1
+        station_list = [sp.station for sp in self._spans]
+        z0 = -self.cross_section.slab_gap - self._sect_list[2].w3
+        val = list(self._node_list.values())
+        for i, x0 in enumerate(station_list):
+            nn = filter(lambda node: node.x == x0 and node.z == z0, val)
+            nnlist = [node for node in nn]
+            for j, node in enumerate(nnlist):
+                cmd += "d,%i,uy,0\n" % node.n
+                if i == x_fix:
+                    cmd += "d,%i,ux,0\n" % node.n
+                if j == y_fix:
+                    cmd += "d,%i,uz,0\n" % node.n
+        with open(filestream, 'w+') as fid:
+            fid.write(cmd)
