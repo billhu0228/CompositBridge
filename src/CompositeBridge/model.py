@@ -1,4 +1,6 @@
+import codecs
 import os
+import subprocess
 from typing import Tuple, List, Dict
 
 import numpy as np
@@ -24,7 +26,7 @@ class Node(ApdlWriteable):
         return cmd_str
 
     def __str__(self):
-        return "Node: (%i,%.1f,%.1f,%.1f)" % (self.n, self.x, self.y, self.z)
+        return "Node: (%i,%.3f,%.3f,%.3f)" % (self.n, self.x, self.y, self.z)
 
     def distance(self, other: 'Node'):
         return self._location.distance(other._location)
@@ -134,7 +136,7 @@ class Span:
 
 class CompositeBridge:
     __slots__ = ('_node_list', '_elem_list', '_sect_list', '_mat_list', '_spans', 'cross_section', '_is_fem', '_apdl',
-                 'cross_beam_dist', '_xlist', '_ylist', '_main_xlist', '_main_ylist', '_sub_ylist')
+                 'cross_beam_dist', '_xlist', '_ylist', '_main_xlist', '_main_ylist', '_sub_ylist', '_lane_matrix')
     _node_list: Dict[int, 'Node']
     _elem_list: Dict[int, 'Element']
     _sect_list: Dict[int, 'Section']
@@ -148,6 +150,7 @@ class CompositeBridge:
     _sub_ylist: List[float]  # 次y坐标位置
     _xlist: List[float]  # 全x坐标位置
     _ylist: List[float]  # 全y坐标位置
+    _lane_matrix: List
 
     def __init__(self, spans: List['Span'], cross_arr: 'CrossArrangement', cross_beam_dist: float = 5.0):
         self._spans = spans
@@ -192,6 +195,7 @@ class CompositeBridge:
         self._main_xlist = []
         self._main_ylist = []
         self._sub_ylist = []
+        self._lane_matrix = []
         pass
 
     def generate_fem(self, e_size_x: float, e_size_y):
@@ -216,6 +220,8 @@ class CompositeBridge:
             self._apdl_node(os.path.join(path, 'Node.inp'))
             self._apdl_elem(os.path.join(path, 'Element.inp'))
             self._apdl_boundary(os.path.join(path, 'Boundary.inp'))
+            self._apdl_lane_load_gb(os.path.join(path, 'LiveloadGB.inp'))
+            self._batch_file(os.path.join(path, 'run.bat'))
             pass
         else:
             print("导出前，请生成fem模型.")
@@ -225,6 +231,15 @@ class CompositeBridge:
     def more_value(start: float, end: float, apx_dist: float):
         npts = int(np.round((end - start) / apx_dist, 0))
         return np.linspace(start, end, npts + 1).tolist()
+
+    @staticmethod
+    def _batch_file(filestream):
+        cmd = r'''set ANS_CONSEC=YES
+REM set ANSYS194_WORKING_DIRECTORY=%s
+"C:\Program Files\ANSYS Inc\v194\ansys\bin\winx64\ANSYS194" -b -i main.inp -o main.out
+        ''' % (os.path.dirname(filestream))
+        with open(filestream, 'w+') as fid:
+            fid.write(cmd)
 
     @staticmethod
     def _apdl_begin(filestream, proj_name="Project A"):
@@ -243,13 +258,7 @@ finish
 /input,Element,inp
 /input,Boundary,inp
 !/input,Debug,inp
-!-------------------------------------------------------
-/solu
-OUTPR,ALL,LAST, 
-allsel
-antype,0
-acel,0,9.806,0
-solve
+/input,LiveloadGB,inp
 finish''' % proj_name
         with open(filestream, 'w+') as fid:
             fid.write(cmd)
@@ -299,6 +308,29 @@ et,184,MPC184'''
         for e in self._elem_list.keys():
             cmd += self._elem_list[e].apdl_str
             cmd += "\n"
+        cmd += "esel,s,secn,,2\n"
+        cmd += "cm,girder,elem\n"
+        cmd += "allsel\n"
+        with open(filestream, 'w+') as fid:
+            fid.write(cmd)
+
+    def _apdl_lane_load_gb(self, filestream):
+        cmd = """/solu
+allsel
+antype,0        
+outres,erase
+acel,0,0,0
+OUTPR,ESOL,last,girder
+OUTRES,all,none
+!OUTRES,esol,last,girder
+/OUTPUT,liveload,res
+
+"""
+        for fact, nlist in self._lane_matrix:
+            for nn in nlist:
+                cmd += "fdele,all,all\n"
+                cmd += "f,%i,fy,-1\n" % nn
+                cmd += "solve\n"
         with open(filestream, 'w+') as fid:
             fid.write(cmd)
 
@@ -359,7 +391,7 @@ et,184,MPC184'''
     def get_layer_num(self):
         prefix = max(self._node_list.keys())
         dig = np.power(10, len(str(prefix)) - 1)
-        lay_num = divmod(prefix, dig)[0] * dig
+        lay_num = dig * 10
         return lay_num
 
     def _create_girder(self):
@@ -459,8 +491,8 @@ et,184,MPC184'''
 
     def _apdl_boundary(self, filestream):
         cmd = "/prep7\n"
-        x_fix = int(len(self._spans) / 2)-1
-        y_fix = int((len(self._main_ylist)-2) / 2)-1
+        x_fix = int(len(self._spans) / 2) - 1
+        y_fix = int((len(self._main_ylist) - 2) / 2) - 1
         station_list = [sp.station for sp in self._spans]
         z0 = -self.cross_section.slab_gap - self._sect_list[2].w3
         val = list(self._node_list.values())
@@ -475,3 +507,36 @@ et,184,MPC184'''
                     cmd += "d,%i,uz,0\n" % node.n
         with open(filestream, 'w+') as fid:
             fid.write(cmd)
+
+    def get_nodes_by_y(self, y0: float):
+        """
+        桥面点序列
+        :param y0:
+        :return:
+        """
+        val = list(self._node_list.values())
+        nn = filter(lambda node: node.y == y0 and node.z == 0.0, val)
+        nnlist = [node.n for node in nn]
+        return nnlist
+
+    def def_lane_gb(self, loc):
+        res = []
+        for y0 in loc:
+            if y0 in self._ylist:
+                res.append((1.0, self.get_nodes_by_y(y0)))
+            else:
+                tmp = self._ylist + [y0, ]
+                tmp.sort()
+                ni = tmp.index(y0)
+                ya = self._ylist[ni - 1]
+                yb = self._ylist[ni]
+                fa = (yb - y0) / (yb - ya)
+                fb = (y0 - ya) / (yb - ya)
+                res.append((fa, self.get_nodes_by_y(ya)))
+                res.append((fb, self.get_nodes_by_y(yb)))
+        self._lane_matrix = res
+
+    @staticmethod
+    def run_ansys(path):
+        subprocess.call(os.path.join(path, 'run.bat'), shell=True)
+        pass

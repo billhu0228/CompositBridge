@@ -7,10 +7,11 @@ g2 = [1.2 + 2] + [4, ] * 2 + [2 + 1.2]
 ca = CrossArrangement(sum(g1), g1, g2, 0.25, 0.05, 0.3, 1.0)
 
 span1 = Span(00)
-span2 = Span(30)
-span3 = Span(60)
-span4 = Span(90)
-sps = [span1, span2, span3, span4]
+span2 = Span(32)
+span3 = Span(68)
+span4 = Span(115)
+# sps = [span1, span2, span3, span4]
+sps = [span1, span2]
 
 m1 = Material(1, 206000e6, 7850, 1.2e5, 0.3, 'Q420')
 m2 = Material(2, 206000e6, 7850, 1.2e5, 0.3, 'Q345')
@@ -39,4 +40,6 @@ Bridge.add_section(s5)
 Bridge.add_section(s6)
 
 Bridge.generate_fem(2, 0.5)
+Bridge.def_lane_gb(loc=[4.2, 10, 12])  # 定义车道位置，国标
 Bridge.write_database(path="../bin/Model1", projectname="TestModelA")
+Bridge.run_ansys(path="../bin/Model1")
