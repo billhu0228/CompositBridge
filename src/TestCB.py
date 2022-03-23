@@ -41,5 +41,5 @@ Bridge.add_section(s6)
 
 Bridge.generate_fem(2, 0.5)
 Bridge.def_lane_gb(loc=[4.2, 10, 12])  # 定义车道位置，国标
-Bridge.write_database(path="../bin/Model1", projectname="TestModelA")
-Bridge.run_ansys(path="../bin/Model1")
+Bridge.write_database(path=r"G:\20220217 组合梁论文\02 Python\bin\Model1", projectname="TestModelA")
+Bridge.run_ansys(path=r"G:\20220217 组合梁论文\02 Python\bin\Model1")

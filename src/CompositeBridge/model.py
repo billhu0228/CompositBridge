@@ -1,4 +1,3 @@
-import codecs
 import os
 import subprocess
 from typing import Tuple, List, Dict
@@ -538,5 +537,5 @@ OUTRES,all,none
 
     @staticmethod
     def run_ansys(path):
-        subprocess.call(os.path.join(path, 'run.bat'), shell=True)
+        subprocess.call(os.path.join(path, 'run.bat'), shell=True, cwd=path)
         pass
