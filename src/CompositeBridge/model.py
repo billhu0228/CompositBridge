@@ -116,6 +116,16 @@ class CrossArrangement:
     cross_dist_b: float  # 横梁下弦至横梁上弦上表面距离，0表示无下弦
 
     def __init__(self, width, girder_arr, subgirder_arr, slab_thickness, slab_gap, x_0, x_1):
+        """
+        配置正交横截面
+        :param width: 横截面总宽（护栏外缘）
+        :param girder_arr: 主梁间距列表（含边梁至护栏外缘距离）
+        :param subgirder_arr: 次梁间距列表（含边梁至护栏外缘距离）
+        :param slab_thickness: 桥面板厚度
+        :param slab_gap: 桥面板-主梁上缘间距
+        :param x_0: 横梁上弦至主梁上表面距离
+        :param x_1: 横梁下弦至横梁上弦上表面距离，0表示无下弦
+        """
         self.width = width
         self.girder_arr = girder_arr
         self.subgirder_arr = subgirder_arr
@@ -210,6 +220,8 @@ class CompositeBridge:
         pass
 
     def write_database(self, projectname, path):
+        if not os.path.exists(path):
+            os.mkdir(path)
         if self._is_fem:
             self._apdl = ""
             self._apdl_begin(os.path.join(path, 'main.inp'), projectname)
@@ -519,6 +531,11 @@ OUTRES,all,none
         return nnlist
 
     def def_lane_gb(self, loc):
+        """
+        定义国标车道
+        :param loc: 车道横向位置列表
+        :return:
+        """
         res = []
         for y0 in loc:
             if y0 in self._ylist:
