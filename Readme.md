@@ -1,6 +1,6 @@
 # CompositeBridge
 
-[![CN doc](https://img.shields.io/badge/文档-中文版-blue.svg)](README_zh_CN.md)
+[![CN doc](https://img.shields.io/badge/文档-中文版-blue.svg)](README.md)
 
 
 ## 简介
