@@ -7,9 +7,9 @@ g2 = [1.2 + 2] + [4, ] * 2 + [2 + 1.2]
 ca = CrossArrangement(sum(g1), g1, g2, 0.25, 0.05, 0.3, 1.0)
 
 span1 = Span(00)
-span2 = Span(32)
-span3 = Span(68)
-span4 = Span(115)
+span2 = Span(30)
+span3 = Span(60)
+span4 = Span(90)
 sps = [span1, span2, span3, span4]
 # sps = [span1, span2]
 
@@ -40,6 +40,8 @@ Bridge.add_section(s5)
 Bridge.add_section(s6)
 
 Bridge.generate_fem(2, 0.5)
+# Bridge.def_lane_gb(loc=[2.0, ])  # 定义车道位置，国标
+
 Bridge.def_lane_gb(loc=[4.2, 10, 12])  # 定义车道位置，国标
-Bridge.write_database(path=r"G:\20220217 组合梁论文\02 Python\bin\Model2", projectname="TestModelA")
-Bridge.run_ansys(path=r"G:\20220217 组合梁论文\02 Python\bin\Model2")
+Bridge.write_database(path=r"E:\20220217 组合梁论文\02 Python\bin\Model3", projectname="TestModelA")
+# Bridge.run_ansys(path=r"E:\20220217 组合梁论文\02 Python\bin\Model3")

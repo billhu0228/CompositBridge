@@ -233,6 +233,7 @@ class CompositeBridge:
             self._apdl_boundary(os.path.join(path, 'Boundary.inp'))
             self._apdl_lane_load_gb(os.path.join(path, 'LiveloadGB.inp'))
             self._batch_file(os.path.join(path, 'run.bat'))
+            self._write_lane_factor(os.path.join(path, "lane_matrix.dat"))
             pass
         else:
             print("导出前，请生成fem模型.")
@@ -247,7 +248,7 @@ class CompositeBridge:
     def _batch_file(filestream):
         cmd = r'''set ANS_CONSEC=YES
 REM set ANSYS194_WORKING_DIRECTORY=%s
-"C:\Program Files\ANSYS Inc\v194\ansys\bin\winx64\ANSYS194" -b -i main.inp -o main.out
+"D:\Program Files\ANSYS Inc\v194\ansys\bin\winx64\ANSYS194" -b -i main.inp -o main.out
         ''' % (os.path.dirname(filestream))
         with open(filestream, 'w+') as fid:
             fid.write(cmd)
@@ -289,6 +290,8 @@ finish''' % proj_name
         cmd += '''! 单元        
 et,181,SHELL181
 et,188,BEAM188
+!keyopt,188,6,3 
+!keyopt,188,15,1
 et,184,MPC184,1'''
         with open(filestream, 'w+', encoding='utf-8') as fid:
             fid.write(cmd)
@@ -321,6 +324,9 @@ et,184,MPC184'''
             cmd += "\n"
         cmd += "esel,s,secn,,2\n"
         cmd += "cm,girder,elem\n"
+        cmd += "nsle,s,1\n"
+        cmd += "nsel,u,node,,999999\n"
+        cmd += "cm,gnode,node\n"
         cmd += "allsel\n"
         with open(filestream, 'w+') as fid:
             fid.write(cmd)
@@ -332,15 +338,17 @@ antype,0
 outres,erase
 acel,0,0,0
 OUTPR,ESOL,last,girder
-OUTRES,all,none
+!OUTPR,NLOAD,last,girder
+!OUTRES,all,none
 !OUTRES,esol,last,girder
 /OUTPUT,liveload,res
 
 """
-        for fact, nlist in self._lane_matrix:
+        for lane_no, fact, nlist in self._lane_matrix:
             for nn in nlist:
                 cmd += "fdele,all,all\n"
-                cmd += "f,%i,fy,-1\n" % nn
+                cmd += "f,%i,fy,-1000\n" % nn
+                cmd += "time,%i\n" % nn
                 cmd += "solve\n"
         with open(filestream, 'w+') as fid:
             fid.write(cmd)
@@ -537,9 +545,9 @@ OUTRES,all,none
         :return:
         """
         res = []
-        for y0 in loc:
+        for ii, y0 in enumerate(loc):
             if y0 in self._ylist:
-                res.append((1.0, self.get_nodes_by_y(y0)))
+                res.append((ii, 1.0, self.get_nodes_by_y(y0)))
             else:
                 tmp = self._ylist + [y0, ]
                 tmp.sort()
@@ -548,11 +556,17 @@ OUTRES,all,none
                 yb = self._ylist[ni]
                 fa = (yb - y0) / (yb - ya)
                 fb = (y0 - ya) / (yb - ya)
-                res.append((fa, self.get_nodes_by_y(ya)))
-                res.append((fb, self.get_nodes_by_y(yb)))
+                res.append((ii, fa, self.get_nodes_by_y(ya)))
+                res.append((ii, fb, self.get_nodes_by_y(yb)))
         self._lane_matrix = res
 
     @staticmethod
     def run_ansys(path):
         subprocess.call(os.path.join(path, 'run.bat'), shell=True, cwd=path)
+        pass
+
+    def _write_lane_factor(self, param):
+        with open(param, 'w+') as fid:
+            for tp in self._lane_matrix:
+                fid.write("%i,%.3f,%s\n" % (tp[0], tp[1], tp[2]))
         pass
