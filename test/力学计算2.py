@@ -14,12 +14,12 @@ pylab.mpl.rcParams['font.size'] = 8
 pylab.mpl.rcParams['legend.fontsize'] = u'small'
 pylab.mpl.rcParams['xtick.labelsize'] = u'small'
 pylab.mpl.rcParams['ytick.labelsize'] = u'small'
-L = [40, 40, 40, 40]
+L = [40]  # , 40, 40, 40]
 xs = [a for a in range(sum(L) + 1)]
 # r = calculate([L, L, L], cForce=[10, 20], moment_loc=xs)
 r = calculate(L,
-              cForce=xs,
-              # dForce=[[0, sum(L)]],
+              #cForce=[20],
+              dForce=[[0, sum(L)]],
               moment_loc=xs, shear_loc=xs)
 
 fig = plt.figure(figsize=(6, 3.5))
@@ -28,7 +28,7 @@ ax = fig.add_axes([0.12, 0.13, 0.84, 0.4])
 # ax2 = fig.add_axes([0.12, 0.53, 0.84, 0.4])
 ax.grid(True)
 # ax2.grid(True)
-ax.plot(xs, np.array(r['m']) * 10500, 'k', linewidth=0.5, label=u'弯矩')
+ax.plot(xs, np.array(r['m']) * 10.5, 'k', linewidth=0.5, label=u'弯矩')
 # ax2.plot(xs, np.array(r['s']), 'k', linewidth=0.5, label=u'剪力')
 hds, labs = ax.get_legend_handles_labels()
 ax.legend(hds, labs, fancybox=True, shadow=True, numpoints=1)
