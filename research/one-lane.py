@@ -8,7 +8,7 @@ from src.CompositeBridge.tools import read_res, get_effect_matrix, get_envo, get
 from src.mechanics import calculate
 
 
-def run(file, span_length, nspan, g_spacing, g_h, Nb, c_spacing, c_h, ts, num_lane):
+def run(file, span_length, nspan, g_spacing, g_h, Nb, c_spacing, c_h, ts, ):
     name = "%i-%.0fm-%.1f-%i-%i" % (nspan, span_length, g_spacing, Nb, ts * 1000)
     g1 = [1.2] + [g_spacing, ] * (Nb - 1) + [1.2]
     g2 = [sum(g1), ]
@@ -38,21 +38,16 @@ def run(file, span_length, nspan, g_spacing, g_h, Nb, c_spacing, c_h, ts, num_la
     Bridge.add_section(s5)
     Bridge.generate_fem(2, 0.5, 181)
     modelName = name
-    loc_lanes = GBLiveLoad.get_multi(num_lane)
-    LiveLoad = GBLiveLoad(Bridge.cal_span, loc=loc_lanes)
+    LiveLoad = GBLiveLoad(Bridge.cal_span, loc=[1.2 + g_spacing])
     Bridge.add_live_load(LiveLoad)  # 定义车道位置，国标
     Bridge.write_database(path=r"E:\20220217 组合梁论文\02 Python\bin\%s" % modelName, projectname="TestModelA")
     Bridge.run_ansys(path=r"E:\20220217 组合梁论文\02 Python\bin\%s" % modelName)
     filepath = "../bin/%s/liveload.res" % modelName
     rr = read_res(filepath)
     girderZ = 1.2 + g_spacing
-    mylist = []
-    for ln in range(num_lane):
-        my_x, sfz_x, fts = get_effect_matrix(rr, lane_num=ln, grider_loc=girderZ, bridge=Bridge)
-        lane1_my = get_envo(my_x, 'my', fts[0], fts[1], fts[2], 1.0)
-        My1 = get_value(lane1_my[['x', 'my_min']], 0.5 * span_length)
-        mylist.append(My1)
-    My1 = sum(mylist)
+    my_x, sfz_x, fts = get_effect_matrix(rr, lane_num=0, grider_loc=girderZ, bridge=Bridge)
+    lane1_my = get_envo(my_x, 'my', fts[0], fts[1], fts[2], 1.0)
+    My1 = get_value(lane1_my[['x', 'my_min']], 0.5 * span_length)
     LL = [span_length, ] * nspan  # , 40, 40, 40]
     xs = [a for a in range(sum(LL) + 1)]
     res = {'x': xs}
@@ -72,8 +67,7 @@ def run(file, span_length, nspan, g_spacing, g_h, Nb, c_spacing, c_h, ts, num_la
         "Nb": Nb,
         "Hg": g_h,
         "Hc": c_h,
-        "g": My1 / My2,
-        "num_lane": num_lane,
+        "g": My1 / My2
     }
     with open(file, 'a') as fid:
         fid.write(json.dumps(result) + '\n')
@@ -81,7 +75,7 @@ def run(file, span_length, nspan, g_spacing, g_h, Nb, c_spacing, c_h, ts, num_la
 
 
 if __name__ == "__main__":
-    file = "multi-lane-result.dat"
-    for ch in [0.3, 0.5]:
-        res = run(file, span_length=40, nspan=2, g_spacing=4.0, g_h=1.8, Nb=5, c_spacing=5, c_h=ch, ts=0.25, num_lane=2)
+    file = "one-lane-result.dat"
+    for ch in [0.3, 0.5, 0.7, 1.5, ]:
+        res = run(file, span_length=40, nspan=2, g_spacing=4.0, g_h=1.8, Nb=5, c_spacing=5, c_h=ch, ts=0.25, )
         print(res)
