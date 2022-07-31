@@ -76,6 +76,6 @@ def run(file, span_length, nspan, g_spacing, g_h, Nb, c_spacing, c_h, ts, ):
 
 if __name__ == "__main__":
     file = "one-lane-result.dat"
-    for ch in [0.3, 0.5, 0.7, 1.5, ]:
-        res = run(file, span_length=40, nspan=2, g_spacing=4.0, g_h=1.8, Nb=5, c_spacing=5, c_h=ch, ts=0.25, )
+    for ch in [0.3, 0.5,]:
+        res = run(file, span_length=40, nspan=1, g_spacing=4.0, g_h=1.8, Nb=5, c_spacing=5, c_h=ch, ts=0.25, )
         print(res)
