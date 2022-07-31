@@ -4,6 +4,8 @@ import subprocess
 from typing import List, Dict
 
 import numpy as np
+
+from .cross_arrangement import CrossArrangement
 from .element import Element
 from .node import Node
 from .section import Section, Material

@@ -1,4 +1,5 @@
 import json
+import os
 import pickle
 import numpy as np
 import pandas as pd
@@ -38,12 +39,14 @@ def run(file, span_length, nspan, g_spacing, g_h, Nb, c_spacing, c_h, ts, num_la
     Bridge.add_section(s5)
     Bridge.generate_fem(2, 0.5, 181)
     modelName = name
+    if num_lane == 0:
+        num_lane = len(GBLiveLoad.auto_multi(Bridge.cross_section.width))
     loc_lanes = GBLiveLoad.get_multi(num_lane)
     LiveLoad = GBLiveLoad(Bridge.cal_span, loc=loc_lanes)
     Bridge.add_live_load(LiveLoad)  # 定义车道位置，国标
-    Bridge.write_database(path=r"E:\20220217 组合梁论文\02 Python\bin\%s" % modelName, projectname="TestModelA")
-    Bridge.run_ansys(path=r"E:\20220217 组合梁论文\02 Python\bin\%s" % modelName)
-    filepath = "../bin/%s/liveload.res" % modelName
+    Bridge.write_database(path=os.path.realpath("..") + r"\bin\%s" % modelName, projectname="TestModelA")
+    Bridge.run_ansys(path=os.path.realpath("..") + r"\bin\%s" % modelName)
+    filepath = os.path.realpath("..") + r"\bin\%s\liveload.res" % modelName
     rr = read_res(filepath)
     girderZ = 1.2 + g_spacing
     mylist = []
@@ -82,6 +85,6 @@ def run(file, span_length, nspan, g_spacing, g_h, Nb, c_spacing, c_h, ts, num_la
 
 if __name__ == "__main__":
     file = "multi-lane-result.dat"
-    for ch in [0.3, 0.5]:
-        res = run(file, span_length=40, nspan=2, g_spacing=4.0, g_h=1.8, Nb=5, c_spacing=5, c_h=ch, ts=0.25, num_lane=2)
+    for ln in [1, 2, 3, ]:
+        res = run(file, span_length=40, nspan=1, g_spacing=ln, g_h=1.8, Nb=5, c_spacing=5, c_h=0.7, ts=0.25, num_lane=0)
         print(res)
