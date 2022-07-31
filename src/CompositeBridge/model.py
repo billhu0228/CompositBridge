@@ -1,151 +1,18 @@
 import os
+import pickle
 import subprocess
-from typing import Tuple, List, Dict
+from typing import List, Dict
 
 import numpy as np
-from PyAngle import Angle
-from ezdxf.math import Vec3
-
-from .section import Section, Material, ApdlWriteable
-
-
-class Node(ApdlWriteable):
-    __slots__ = ('n', 'x', 'y', 'z', '_location')
-
-    def __init__(self, n: int, x, y, z):
-        self._location = Vec3(x, y, z)
-        self.n = n
-        self.x = x
-        self.y = y
-        self.z = z
-
-    @property
-    def apdl_str(self):
-        cmd_str = "n,%i,%.3f,%.3f,%.3f" % (self.n, self.x, self.z, self.y)
-        return cmd_str
-
-    def __str__(self):
-        return "Node: (%i,%.3f,%.3f,%.3f)" % (self.n, self.x, self.y, self.z)
-
-    def distance(self, other: 'Node'):
-        return self._location.distance(other._location)
-
-    def copy(self, dn: int = 0, x0: float = 0, y0: float = 0, z0: float = 0):
-        return Node(self.n + dn, self.x + x0, self.y + y0, self.z + z0)
-
-    def __eq__(self, other: 'Node'):
-        return self.n == other.n
-
-    def __ne__(self, other: 'Node'):
-        return self.n != other.n
-
-    def __gt__(self, other: 'Node'):
-        return self.n > other.n
-
-    def __lt__(self, other: 'Node'):
-        return self.n < other.n
-
-    def __ge__(self, other: 'Node'):
-        return self.n >= other.n
-
-    def __le__(self, other: 'Node'):
-        return self.n <= other.n
-
-
-class Element:
-    __slots__ = ('e', 'nlist', 'mat', 'etype', 'real', 'secn', '_npts')
-
-    nlist: Tuple["Node"]
-
-    def __init__(self, e: int, mat: int, etype: int, real: int, secn: int, nodes: Tuple):
-        self.e = e
-        self.mat = mat
-        self.etype = etype
-        self.real = real
-        self.secn = secn
-        self._npts = len(nodes)
-        if self.etype == 188:
-            if len(nodes) != 3:
-                raise Exception("BEAM188应使用3个Node.")
-            else:
-                self.nlist = nodes
-        elif etype == 181:
-            if len(nodes) != 4:
-                raise Exception("SHELL181应使用4个Node.")
-            else:
-                self.nlist = nodes
-        elif etype == 184:
-            if len(nodes) != 2:
-                raise Exception("MPC184应使用2个Node.")
-            else:
-                self.nlist = nodes
-        else:
-            raise Exception("单元类型不支持.")
-
-    @property
-    def apdl_str(self):
-        cmd_str = '''mat,%i
-type,%i
-real,%i
-secn,%i
-e,''' % (self.mat, self.etype, self.real, self.secn)
-        for nn in self.nlist:
-            cmd_str += str(nn.n)
-            cmd_str += ','
-        return cmd_str
-
-    def __str__(self):
-        ss = "Elem: (%i,type=%i,secn=%i,nlist=[" % (self.e, self.etype, self.secn,)
-        for n in self.nlist:
-            ss += "%i," % n.n
-        ss += "])"
-        return ss
-
-
-class CrossArrangement:
-    """
-    正交横截面
-    """
-    __slots__ = ("width", 'girder_arr', 'subgirder_arr', 'slab_thickness', 'slab_gap', 'cross_dist_a', 'cross_dist_b')
-    width: float
-    girder_arr: List[float]
-    subgirder_arr: List[float]
-    slab_thickness: float
-    slab_gap: float
-    cross_dist_a: float  # 横梁上弦至主梁上表面距离
-    cross_dist_b: float  # 横梁下弦至横梁上弦上表面距离，0表示无下弦
-
-    def __init__(self, width, girder_arr, subgirder_arr, slab_thickness, slab_gap, x_0, x_1):
-        """
-        配置正交横截面
-        :param width: 横截面总宽（护栏外缘）
-        :param girder_arr: 主梁间距列表（含边梁至护栏外缘距离）
-        :param subgirder_arr: 次梁间距列表（含边梁至护栏外缘距离）
-        :param slab_thickness: 桥面板厚度
-        :param slab_gap: 桥面板-主梁上缘间距
-        :param x_0: 横梁上弦至主梁上表面距离
-        :param x_1: 横梁下弦至横梁上弦上表面距离，0表示无下弦
-        """
-        self.width = width
-        self.girder_arr = girder_arr
-        self.subgirder_arr = subgirder_arr
-        self.slab_thickness = slab_thickness
-        self.slab_gap = slab_gap
-        if sum(self.girder_arr) != self.width or sum(self.subgirder_arr) != self.width:
-            raise Exception("梁间距配置有误.")
-        self.cross_dist_a = x_0
-        self.cross_dist_b = x_1
-
-
-class Span:
-    def __init__(self, station: float, angle: 'Angle' = Angle.from_degrees(90.0)):
-        self.station = station
-        self.angle = angle
+from .element import Element
+from .node import Node
+from .section import Section, Material
 
 
 class CompositeBridge:
-    __slots__ = ('_node_list', '_elem_list', '_sect_list', '_mat_list', '_spans', 'cross_section', '_is_fem', '_apdl',
-                 'cross_beam_dist', '_xlist', '_ylist', '_main_xlist', '_main_ylist', '_sub_ylist', '_lane_matrix')
+    __slots__ = ('length', 'cal_span', 'live_load',
+                 '_node_list', '_elem_list', '_sect_list', '_mat_list', '_spans', 'cross_section', '_is_fem', '_apdl',
+                 'cross_beam_dist', '_xlist', '_ylist', '_main_xlist', '_main_ylist', '_sub_ylist', 'lane_matrix')
     _node_list: Dict[int, 'Node']
     _elem_list: Dict[int, 'Element']
     _sect_list: Dict[int, 'Section']
@@ -159,13 +26,17 @@ class CompositeBridge:
     _sub_ylist: List[float]  # 次y坐标位置
     _xlist: List[float]  # 全x坐标位置
     _ylist: List[float]  # 全y坐标位置
-    _lane_matrix: List
+    lane_matrix: List
+    length: float
 
     def __init__(self, spans: List['Span'], cross_arr: 'CrossArrangement', cross_beam_dist: float = 5.0):
         self._spans = spans
         self.cross_section = cross_arr
         self._initialize()
         self.cross_beam_dist = cross_beam_dist
+        self.length = spans[-1].station - spans[0].station
+        self.cal_span = self._get_cal_span()
+        self.live_load = None
         pass
 
     def add_material(self, mat: 'Material'):
@@ -195,7 +66,7 @@ class CompositeBridge:
         """
         self._node_list = {}
         self._elem_list = {}
-        self._sect_list = {}
+        self._sect_list: {int: Section} = {}
         self._mat_list = {}
         self._is_fem = False
         self._apdl = ""
@@ -204,16 +75,16 @@ class CompositeBridge:
         self._main_xlist = []
         self._main_ylist = []
         self._sub_ylist = []
-        self._lane_matrix = []
+        self.lane_matrix = []
         pass
 
-    def generate_fem(self, e_size_x: float, e_size_y):
+    def generate_fem(self, e_size_x: float, e_size_y: float, plate_elem: int):
         """
         生成有限元数据
         :return:
         """
         self._create_coord(e_size_x, e_size_y)
-        self._create_plate()
+        self._create_plate(elem=plate_elem)
         self._create_girder()
         self._create_cross_beam()
         self._is_fem = True
@@ -233,7 +104,8 @@ class CompositeBridge:
             self._apdl_boundary(os.path.join(path, 'Boundary.inp'))
             self._apdl_lane_load_gb(os.path.join(path, 'LiveloadGB.inp'))
             self._batch_file(os.path.join(path, 'run.bat'))
-            self._write_lane_factor(os.path.join(path, "lane_matrix.dat"))
+            # self._write_lane_factor(os.path.join(path, "lane_matrix.dat"))
+            self._persistence_(path)
             pass
         else:
             print("导出前，请生成fem模型.")
@@ -284,15 +156,20 @@ finish''' % proj_name
         with open(filestream, 'w+', encoding='utf-8') as fid:
             fid.write(cmd)
 
-    @staticmethod
-    def _apdl_etype(filestream):
+    def _apdl_etype(self, filestream):
         cmd = "/prep7"
         cmd += '''! 单元        
 et,181,SHELL181
+et,182,PLANE182
 et,188,BEAM188
-!keyopt,188,6,3 
-!keyopt,188,15,1
-et,184,MPC184,1'''
+keyopt,188,1,1 
+keyopt,188,3,2
+keyopt,181,3,0
+keyopt,182,3,3
+et,1840,MPC184,1
+et,1841,MPC184,1
+'''
+        cmd += "r,182,%.3f" % self._sect_list[1].thickness
         with open(filestream, 'w+', encoding='utf-8') as fid:
             fid.write(cmd)
 
@@ -344,7 +221,7 @@ OUTPR,ESOL,last,girder
 /OUTPUT,liveload,res
 
 """
-        for lane_no, fact, nlist in self._lane_matrix:
+        for lane_no, fact, nlist in self.lane_matrix:
             for nn in nlist:
                 cmd += "fdele,all,all\n"
                 cmd += "f,%i,fy,-1000\n" % nn
@@ -383,7 +260,7 @@ OUTPR,ESOL,last,girder
             tmp += self.more_value(kp_y[i], kp_y[i + 1], apx_dist=e_size_y)
         self._ylist = np.unique(tmp).tolist()
 
-    def _create_plate(self):
+    def _create_plate(self, elem=181):
         n = 1
         for y in self._ylist:
             for x in self._xlist:
@@ -403,7 +280,7 @@ OUTPR,ESOL,last,girder
                     self._node_list[C],
                     self._node_list[D],
                 )
-                self._elem_list[e] = Element(e, 1, 181, 1, 1, ns)
+                self._elem_list[e] = Element(e, 3, elem, elem, 1, ns)
                 e += 1
         pass
 
@@ -427,51 +304,50 @@ OUTPR,ESOL,last,girder
         for ii, y0 in enumerate(girder_y):  # 主梁
             nn = filter(lambda x: x.y == y0, val)
             for jj, n in enumerate(nn):
-                self._node_list[n.n + lay_num * 1] = n.copy(lay_num * 1, 0, 0, -slab_gap - 0.5 * beam_h)  # 主梁节点
+                # self._node_list[n.n + lay_num * 1] = n.copy(lay_num * 1, 0, 0, -slab_gap - 0.5 * beam_h)  # 主梁节点
                 self._node_list[n.n + lay_num * 2] = n.copy(lay_num * 2, 0, 0,
                                                             -slab_gap - self.cross_section.cross_dist_a)  # 主梁上接口
                 if self.cross_section.cross_dist_b != 0:
                     self._node_list[n.n + lay_num * 3] = n.copy(lay_num * 3, 0, 0,
                                                                 -slab_gap - self.cross_section.cross_dist_a
                                                                 - self.cross_section.cross_dist_b)  # 主梁下接口
-                if n.x in station_list:
-                    self._node_list[n.n + lay_num * 4] = n.copy(lay_num * 4, 0, 0, -slab_gap - beam_h)  # 主梁支座接口
+                # if n.x in station_list:
+                #     self._node_list[n.n + lay_num * 4] = n.copy(lay_num * 4, 0, 0, -slab_gap - beam_h)  # 主梁支座接口
 
-                ns = (n, self._node_list[n.n + lay_num * 1])
-                self._elem_list[ei] = Element(ei, 184, 184, 1, 1, ns)  # MPC
+                # ns = (n, self._node_list[n.n + lay_num * 1])
+                # self._elem_list[ei] = Element(ei, 184, 1840, 1, 1, ns)  # MPC 板-梁
+                # ei += 1
+
+                ns = (n, self._node_list[n.n + lay_num * 2])
+                self._elem_list[ei] = Element(ei, 184, 1841, 1, 1, ns)  # MPC 梁-梁上口
                 ei += 1
-                ns = (self._node_list[n.n + lay_num * 1], self._node_list[n.n + lay_num * 2])
-                self._elem_list[ei] = Element(ei, 184, 184, 1, 1, ns)  # MPC
-                ei += 1
-                if n.x in station_list:
-                    ns = (n, self._node_list[n.n + lay_num * 4])
-                    self._elem_list[ei] = Element(ei, 184, 184, 1, 1, ns)  # MPC
-                    ei += 1
+                # if n.x in station_list:
+                #     ns = (n, self._node_list[n.n + lay_num * 4])
+                #     self._elem_list[ei] = Element(ei, 184, 184, 1, 1, ns)  # MPC 板-支座
+                #     ei += 1
                 if self.cross_section.cross_dist_b != 0:
-                    ns = (self._node_list[n.n + lay_num * 1], self._node_list[n.n + lay_num * 3])
-                    self._elem_list[ei] = Element(ei, 184, 184, 1, 1, ns)  # MPC
+                    ns = (self._node_list[n.n + lay_num * 2], self._node_list[n.n + lay_num * 3])
+                    self._elem_list[ei] = Element(ei, 1841, 184, 1, 1, ns)  # MPC 梁上口-梁下口
                     ei += 1
                 if jj != 0:
-                    ns = (self._node_list[n.n + lay_num * 1], self._node_list[n.n + lay_num * 1 - 1],
-                          self._node_list[999999])
-                    self._elem_list[ei] = Element(ei, 2, 188, 1, 2, ns)
+                    ns = (self._node_list[n.n + lay_num * 0 - 1], self._node_list[n.n + lay_num * 0], self._node_list[999999])
+                    self._elem_list[ei] = Element(ei, 2, 188, 1, 2, ns)  # 梁
                     ei += 1
         girder_y = self._sub_ylist[1:-1]
         beam_h = self._sect_list[3].w3
         for ii, y0 in enumerate(girder_y):  # 纵梁
             nn = filter(lambda x: x.y == y0, val)
             for jj, n in enumerate(nn):
-                self._node_list[n.n + lay_num * 1] = n.copy(lay_num * 1, 0, 0, -slab_gap - 0.5 * beam_h)  # 小纵梁节点
+                # self._node_list[n.n + lay_num * 1] = n.copy(lay_num * 1, 0, 0, -slab_gap - 0.5 * beam_h)  # 小纵梁节点
                 self._node_list[n.n + lay_num * 2] = n.copy(lay_num * 2, 0, 0, -slab_gap - beam_h)  # 小纵梁梁底节点
-                ns = (n, self._node_list[n.n + lay_num * 1])
-                self._elem_list[ei] = Element(ei, 184, 184, 1, 1, ns)
-                ei += 1
-                ns = (self._node_list[n.n + lay_num * 1], self._node_list[n.n + lay_num * 2])
-                self._elem_list[ei] = Element(ei, 184, 184, 1, 1, ns)
+                # ns = (n, self._node_list[n.n + lay_num * 1])
+                # self._elem_list[ei] = Element(ei, 184, 1840, 1, 1, ns)  # MPC 板-梁
+                # ei += 1
+                ns = (self._node_list[n.n + lay_num * 0], self._node_list[n.n + lay_num * 2])
+                self._elem_list[ei] = Element(ei, 184, 1841, 1, 1, ns)  # MPC 梁-梁
                 ei += 1
                 if jj != 0:
-                    ns = (self._node_list[n.n + lay_num * 1], self._node_list[n.n + lay_num * 1 - 1],
-                          self._node_list[999999])
+                    ns = (self._node_list[n.n + lay_num * 0 - 1], self._node_list[n.n + lay_num * 0], self._node_list[999999])
                     self._elem_list[ei] = Element(ei, 2, 188, 1, 3, ns)
                     ei += 1
 
@@ -490,33 +366,36 @@ OUTPR,ESOL,last,girder
                     ns = (nnlist[jj], nnlist[jj - 1], self._node_list[999999])
                     self._elem_list[ei] = Element(ei, 2, 188, 1, 4, ns)
                     ei += 1
-            mm = filter(lambda node: node.x == x0 and node.z == z1, val)
-            mmlist = [node for node in mm]
-            mmlist.sort()
-            for jj, n in enumerate(mmlist):
-                if jj != 0:
-                    ns = (mmlist[jj], mmlist[jj - 1], self._node_list[999999])
-                    self._elem_list[ei] = Element(ei, 2, 188, 1, 5, ns)
-                    ei += 1
-            for k in range(len(nnlist)):
-                if k % 2 != 0:
-                    p = divmod((k + 1), 2)[0]
-                    ns = (nnlist[k], mmlist[p - 1], self._node_list[999999])
-                    self._elem_list[ei] = Element(ei, 2, 188, 1, 6, ns)
-                    ei += 1
-                    ns = (nnlist[k], mmlist[p], self._node_list[999999])
-                    self._elem_list[ei] = Element(ei, 2, 188, 1, 6, ns)
-                    ei += 1
+            if self.cross_section.cross_dist_b != 0:
+                mm = filter(lambda node: node.x == x0 and node.z == z1, val)
+                mmlist = [node for node in mm]
+                mmlist.sort()
+                for jj, n in enumerate(mmlist):
+                    if jj != 0:
+                        ns = (mmlist[jj], mmlist[jj - 1], self._node_list[999999])
+                        self._elem_list[ei] = Element(ei, 2, 188, 1, 5, ns)
+                        ei += 1
+                for k in range(len(nnlist)):
+                    if k % 2 != 0:
+                        p = divmod((k + 1), 2)[0]
+                        ns = (nnlist[k], mmlist[p - 1], self._node_list[999999])
+                        self._elem_list[ei] = Element(ei, 2, 188, 1, 6, ns)
+                        ei += 1
+                        ns = (nnlist[k], mmlist[p], self._node_list[999999])
+                        self._elem_list[ei] = Element(ei, 2, 188, 1, 6, ns)
+                        ei += 1
 
     def _apdl_boundary(self, filestream):
         cmd = "/prep7\n"
         x_fix = int(len(self._spans) / 2) - 1
         y_fix = int((len(self._main_ylist) - 2) / 2) - 1
         station_list = [sp.station for sp in self._spans]
-        z0 = -self.cross_section.slab_gap - self._sect_list[2].w3
+        # z0 = -self.cross_section.slab_gap - self._sect_list[2].w3 * 0.5
+        z0 = 0
         val = list(self._node_list.values())
+        ylist = list(self._main_ylist)[1:-1]
         for i, x0 in enumerate(station_list):
-            nn = filter(lambda node: node.x == x0 and node.z == z0, val)
+            nn = filter(lambda node: node.x == x0 and abs(node.z - z0) < 1e-3 and node.y in ylist, val)
             nnlist = [node for node in nn]
             for j, node in enumerate(nnlist):
                 cmd += "d,%i,uy,0\n" % node.n
@@ -526,6 +405,12 @@ OUTPR,ESOL,last,girder
                     cmd += "d,%i,uz,0\n" % node.n
         with open(filestream, 'w+') as fid:
             fid.write(cmd)
+
+    def _get_cal_span(self):
+        tmp = []
+        for i in range(len(self._spans) - 1):
+            tmp.append(self._spans[i + 1].station - self._spans[i].station)
+        return max(tmp)
 
     def get_nodes_by_y(self, y0: float):
         """
@@ -538,12 +423,33 @@ OUTPR,ESOL,last,girder
         nnlist = [node.n for node in nn]
         return nnlist
 
-    def def_lane_gb(self, loc):
+    def get_parameters(self):
+        S = self.cross_section.girder_arr[1] * 1e3
+        L = (self._spans[1].station - self._spans[0].station) * 1e3
+        Nb = len(self.cross_section.girder_arr) - 1
+        Eb = self._mat_list[1].ex
+        Ed = self._mat_list[3].ex
+        A = self._sect_list[2].area * 1e6
+        I = self._sect_list[2].inertia * 1e12
+        y0 = self._sect_list[2].yg
+        n = Eb / Ed
+        eg = self.cross_section.slab_gap + (self._sect_list[2].w3 - y0) + self._sect_list[1].thickness * 0.5
+        eg = eg * 1e3
+        Kg = n * (I + A * eg ** 2)
+        ts = self._sect_list[1].thickness * 1e3
+        return {'S': S, "L": L, "Kg": Kg, 'ts': ts}
+
+    def add_live_load(self, load):
+        self.live_load = load
+        self._def_lane_gb(load.locations)
+
+    def _def_lane_gb(self, loc):
         """
         定义国标车道
         :param loc: 车道横向位置列表
         :return:
         """
+
         res = []
         for ii, y0 in enumerate(loc):
             if y0 in self._ylist:
@@ -558,15 +464,17 @@ OUTPR,ESOL,last,girder
                 fb = (y0 - ya) / (yb - ya)
                 res.append((ii, fa, self.get_nodes_by_y(ya)))
                 res.append((ii, fb, self.get_nodes_by_y(yb)))
-        self._lane_matrix = res
+        self.lane_matrix = res
 
     @staticmethod
     def run_ansys(path):
         subprocess.call(os.path.join(path, 'run.bat'), shell=True, cwd=path)
         pass
 
+    def _persistence_(self, path):
+        with open(os.path.join(path, "bridge.pickle"), 'wb') as fid:
+            pickle.dump(self, fid, pickle.HIGHEST_PROTOCOL)
+
     def _write_lane_factor(self, param):
-        with open(param, 'w+') as fid:
-            for tp in self._lane_matrix:
-                fid.write("%i,%.3f,%s\n" % (tp[0], tp[1], tp[2]))
-        pass
+        with open(param, 'wb') as fid:
+            pickle.dump(self.lane_matrix, fid, pickle.HIGHEST_PROTOCOL)

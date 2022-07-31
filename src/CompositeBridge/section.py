@@ -1,13 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from typing import Tuple
-
-
-class ApdlWriteable:
-    __metaclass__ = ABCMeta
-
-    @abstractmethod
-    def apdl_str(self):
-        pass
+from .base import ApdlWriteable
 
 
 class Section:
@@ -33,6 +26,9 @@ class Section:
     @property
     def offset(self):
         return self._offset
+
+
+
 
 
 class ShellSection(Section, ApdlWriteable):
@@ -96,6 +92,38 @@ secdata,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,0,0,0,0,0,0''' % (
             self.id, self.name, self._offset[0], self._offset[1],
             self.w1, self.w2, self.w3, self.t1, self.t2, self.t3)
         return cmd_str
+
+    @property
+    def yg(self):
+        h = self.w3 - self.t1 - self.t2
+        a1 = self.t1 * self.w1
+        a3 = self.t3 * h
+        a2 = self.t2 * self.w2
+        y1 = 0.5 * self.t1
+        y3 = self.t1 + 0.5 * h
+        y2 = self.w3 - self.t2 * 0.5
+        y0 = (y1 * a1 + y2 * a2 + y3 * a3) / self.area
+        return y0
+
+    @property
+    def area(self):
+        return self.w1 * self.t1 + self.w2 * self.t2 + (self.w3 - self.t1 - self.t2) * self.t3
+
+    @property
+    def inertia(self):
+        h = self.w3 - self.t1 - self.t2
+        a1 = self.t1 * self.w1
+        a3 = self.t3 * h
+        a2 = self.t2 * self.w2
+        y1 = 0.5 * self.t1
+        y3 = self.t1 + 0.5 * h
+        y2 = self.w3 - self.t2 * 0.5
+        y0 = (y1 * a1 + y2 * a2 + y3 * a3) / self.area
+        i1 = self.t1 ** 3 * self.w1 / 12 + a1 * (y0 - y1) ** 2
+        i2 = self.t2 ** 3 * self.w2 / 12 + a2 * (y0 - y2) ** 2
+        i3 = self.t3 * h ** 3 / 12 + a3 * (y0 - y3) ** 2
+        i = i1 + i2 + i3
+        return i
 
 
 class Material(ApdlWriteable):
