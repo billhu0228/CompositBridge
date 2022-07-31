@@ -27,7 +27,7 @@ Bridge.add_material(m2)
 Bridge.add_material(m3)
 Bridge.add_material(m184)
 
-s1 = ShellSection(1, 'T250', th=0.050, offset=(0, 0.05 * 0.5 + 0.05))
+s1 = ShellSection(1, 'T250', th=0.250, offset=(0, 0.25 * 0.5 + 0.05))
 s2 = ISection(2, "I1800", offset=(0, 1.8), w1=0.7, w2=0.6, w3=1.8, t1=0.032, t2=0.024, t3=0.018)
 s3 = ISection(3, "I300", offset=(0, 0.3), w1=0.3, w2=0.6, w3=0.3, t1=0.010, t2=0.010, t3=0.008)
 s4 = ISection(4, "I700", offset=(0, 0.7), w1=0.3, w2=0.3, w3=0.7, t1=0.024, t2=0.024, t3=0.013)
@@ -44,9 +44,9 @@ Bridge.add_section(s5)
 Bridge.generate_fem(0.5, 0.5, 181)
 # Bridge.def_lane_gb(loc=[2.0, ])  # 定义车道位置，国标
 
-modelName = "M1"
-
-LiveLoad = GBLiveLoad(Bridge.cal_span, loc=[5.9])
+modelName = "M22"
+locs = GBLiveLoad.get_multi(2)
+LiveLoad = GBLiveLoad(Bridge.cal_span, loc=locs)
 Bridge.add_live_load(LiveLoad)  # 定义车道位置，国标
 Bridge.write_database(path=r"E:\20220217 组合梁论文\02 Python\bin\%s" % modelName, projectname="TestModelA")
 Bridge.run_ansys(path=r"E:\20220217 组合梁论文\02 Python\bin\%s" % modelName)

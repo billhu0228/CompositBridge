@@ -22,3 +22,30 @@ class GBLiveLoad:
             self.multi_factors = 0.6
         else:
             raise Exception("超过定义")
+
+    @staticmethod
+    def auto_multi(width):
+        locss = []
+        for i in range(8):
+            locss.append(i * 2.1 + 0.5 + 0.9)
+        if width < 7:
+            return locss[0:1]
+        elif width < 10.5:
+            return locss[0:2]
+        elif width < 14.0:
+            return locss[0:3]
+        elif width < 17.5:
+            return locss[0:4]
+        elif width < 21.0:
+            return locss[0:5]
+        elif width < 24.5:
+            return locss[0:6]
+        elif width < 28.0:
+            return locss[0:7]
+
+    @staticmethod
+    def get_multi(num):
+        ret = []
+        for i in range(num):
+            ret.append(i * 2.1 + 0.5 + 0.9)
+        return ret
