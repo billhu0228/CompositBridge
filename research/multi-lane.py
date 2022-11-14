@@ -57,7 +57,7 @@ def run(file, span_length, nspan, g_spacing, g_h, Nb, c_spacing, c_h, ts, num_la
         mylist.append(My1)
     My1 = sum(mylist)
     LL = [span_length, ] * nspan  # , 40, 40, 40]
-    xs = [a for a in range(sum(LL) + 1)]
+    xs = [a for a in range(int(sum(LL)) + 1)]
     res = {'x': xs}
     for x in xs:
         r = calculate(LL, cForce=[x], moment_loc=xs, shear_loc=xs)
@@ -85,6 +85,6 @@ def run(file, span_length, nspan, g_spacing, g_h, Nb, c_spacing, c_h, ts, num_la
 
 if __name__ == "__main__":
     file = "multi-lane-result.dat"
-    for ln in [1, 2, 3, ]:
-        res = run(file, span_length=40, nspan=1, g_spacing=ln, g_h=1.8, Nb=5, c_spacing=5, c_h=0.7, ts=0.25, num_lane=0)
+    for h1 in [0.3, 0.5, 0.7, 1.5]:
+        res = run(file, span_length=40.0, nspan=2, g_spacing=4.0, g_h=1.8, Nb=5, c_spacing=5, c_h=h1, ts=0.25, num_lane=0)
         print(res)

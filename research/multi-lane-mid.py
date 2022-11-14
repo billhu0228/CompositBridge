@@ -1,4 +1,5 @@
 import json
+import os
 import pickle
 import numpy as np
 import pandas as pd
@@ -8,7 +9,7 @@ from src.CompositeBridge.tools import read_res, get_effect_matrix, get_envo, get
 from src.mechanics import calculate
 
 
-def run(file, span_length, nspan, g_spacing, g_h, Nb, c_spacing, c_h, ts, ):
+def run(file, span_length, nspan, g_spacing, g_h, Nb, c_spacing, c_h, ts, num_lane):
     name = "%i-%.0fm-%.1f-%i-%i" % (nspan, span_length, g_spacing, Nb, ts * 1000)
     g1 = [1.2] + [g_spacing, ] * (Nb - 1) + [1.2]
     g2 = [sum(g1), ]
@@ -38,18 +39,26 @@ def run(file, span_length, nspan, g_spacing, g_h, Nb, c_spacing, c_h, ts, ):
     Bridge.add_section(s5)
     Bridge.generate_fem(2, 0.5, 181)
     modelName = name
-    LiveLoad = GBLiveLoad(Bridge.cal_span, loc=[1.2 + g_spacing])
+    if num_lane == 0:
+        num_lane = len(GBLiveLoad.auto_multi(Bridge.cross_section.width))
+    loc_lanes = GBLiveLoad.get_multi(num_lane)
+    LiveLoad = GBLiveLoad(Bridge.cal_span, loc=loc_lanes)
     Bridge.add_live_load(LiveLoad)  # 定义车道位置，国标
-    Bridge.write_database(path=r"E:\20220217 组合梁论文\02 Python\bin\%s" % modelName, projectname="TestModelA")
-    Bridge.run_ansys(path=r"E:\20220217 组合梁论文\02 Python\bin\%s" % modelName)
-    filepath = "../bin/%s/liveload.res" % modelName
+    Bridge.write_database(path=os.path.realpath("..") + r"\bin\%s" % modelName, projectname="TestModelA")
+    Bridge.run_ansys(path=os.path.realpath("..") + r"\bin\%s" % modelName)
+    filepath = os.path.realpath("..") + r"\bin\%s\liveload.res" % modelName
     rr = read_res(filepath)
-    girderZ = 1.2 + g_spacing
-    my_x, sfz_x, fts = get_effect_matrix(rr, lane_num=0, grider_loc=girderZ, bridge=Bridge)
-    lane1_my = get_envo(my_x, 'my', fts[0], fts[1], fts[2], 1.0)
-    My1 = get_value(lane1_my[['x', 'my_min']], 0.5 * span_length)
+    int_space = np.round(Nb / 2, 0) - 1
+    girderZ = 1.2 + g_spacing * int_space
+    mylist = []
+    for ln in range(num_lane):
+        my_x, sfz_x, fts = get_effect_matrix(rr, lane_num=ln, grider_loc=girderZ, bridge=Bridge)
+        lane1_my = get_envo(my_x, 'my', fts[0], fts[1], fts[2], 1.0)
+        My1 = get_value(lane1_my[['x', 'my_min']], 0.5 * span_length)
+        mylist.append(My1)
+    My1 = sum(mylist)
     LL = [span_length, ] * nspan  # , 40, 40, 40]
-    xs = [a for a in range(sum(LL) + 1)]
+    xs = [a for a in range(int(sum(LL)) + 1)]
     res = {'x': xs}
     for x in xs:
         r = calculate(LL, cForce=[x], moment_loc=xs, shear_loc=xs)
@@ -67,7 +76,8 @@ def run(file, span_length, nspan, g_spacing, g_h, Nb, c_spacing, c_h, ts, ):
         "Nb": Nb,
         "Hg": g_h,
         "Hc": c_h,
-        "g": My1 / My2
+        "g": My1 / My2,
+        "num_lane": num_lane,
     }
     with open(file, 'a') as fid:
         fid.write(json.dumps(result) + '\n')
@@ -75,7 +85,7 @@ def run(file, span_length, nspan, g_spacing, g_h, Nb, c_spacing, c_h, ts, ):
 
 
 if __name__ == "__main__":
-    file = "one-lane-result.dat"
-    for t in [2, 3, 4, 5]:
-        res = run(file, span_length=40, nspan=t, g_spacing=4.0, g_h=1.8, Nb=5, c_spacing=5, c_h=0.7, ts=0.25, )
+    file = "multi-lane-result-mid.dat"
+    for S in [1, 2, 3, 4, 5]:
+        res = run(file, span_length=40.0, nspan=2, g_spacing=S, g_h=1.8, Nb=5, c_spacing=5, c_h=0.7, ts=0.25, num_lane=0)
         print(res)

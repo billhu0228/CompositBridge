@@ -13,7 +13,6 @@ CompositeBridge 是一个计算钢混组合梁的参数化工具。用于简化�
 - [x] 组合梁的三维有限元模型生成；
 - [x] 车道荷载的计算；
 - [x] Mechanical的Batch Mode 调用；
-- [ ] 还有什么？
 
 ## 示例
 
@@ -21,8 +20,8 @@ CompositeBridge 是一个计算钢混组合梁的参数化工具。用于简化�
 
    ```python
    from src.CompositeBridge import CompositeBridge
-from src.CompositeBridge.span import Span
-from src.CompositeBridge.cross_arrangement import CrossArrangement
+   from src.CompositeBridge.span import Span
+   from src.CompositeBridge.cross_arrangement import CrossArrangement
    from src.CompositeBridge import Material, ShellSection, ISection
    ```
    
